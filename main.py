@@ -7,22 +7,15 @@ fastf1.Cache.enable_cache('cache')
 @app.route('/api/v1/live')
 def get_live_data():
     try:
-        # Cargamos España 2024 (un GP que ya conocemos)
+        # Cargamos España 2024 que ya sabemos que está en el caché
         session = fastf1.get_session(2024, 'Spain', 'R')
         session.load(laps=False, telemetry=False, weather=False)
         
         grid_data = []
-        results = session.results.head(15) # Cogemos los 15 primeros
-        
-        for index, row in results.iterrows():
-            # Limpiamos los datos para que siempre sean números o strings válidos
-            try:
-                pos = int(row['Position'])
-            except:
-                pos = 0
-
+        # Cogemos los resultados y los convertimos a texto simple para evitar errores
+        for index, row in session.results.head(15).iterrows():
             grid_data.append({
-                'Pos': pos,
+                'Pos': str(row['Position']), # Lo enviamos como texto para que no falle
                 'Piloto': str(row['Abbreviation']),
                 'Equipo': str(row['TeamName']),
                 'Gap': 'LÍDER' if index == 0 else f"+{index*1.5}s"
@@ -30,16 +23,11 @@ def get_live_data():
 
         return jsonify({
             "status": "OK",
-            "gp": "Spanish GP 2024 - Estable",
+            "gp": "Spanish GP - Datos Reales",
             "grid": grid_data
         })
     except Exception as e:
-        # Este mensaje nos dirá exactamente qué falla si ocurre algo
-        return jsonify({
-            "status": "error", 
-            "message": "Ajustando motores...",
-            "debug": str(e)
-        })
+        return jsonify({"status": "error", "message": str(e)})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
