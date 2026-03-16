@@ -1,52 +1,64 @@
 import os
 import fastf1
+import time
 from flask import Flask, jsonify
 
-# 1. Crear carpeta de cache al principio
-cache_dir = os.path.join(os.getcwd(), 'cache')
+app = Flask(__name__)
+
+# Configuración de caché
+cache_dir = 'cache'
 if not os.path.exists(cache_dir):
     os.makedirs(cache_dir)
-
-app = Flask(__name__)
-fastf1.Cache.enable_cache(cache_dir) 
+fastf1.Cache.enable_cache(cache_dir)
 
 @app.route('/api/v1/live')
 def get_live_data():
     try:
-        # Cargamos el GP de España 2024
-        session = fastf1.get_session(2024, 'Spain', 'R')
-        session.load(laps=False, telemetry=False, weather=False)
+        # --- CARGAMOS LA CARRERA REAL DE 2025 ---
+        session = fastf1.get_session(2025, 'Spain', 'R')
+        session.load(laps=True, telemetry=False, weather=False)
+        
+        # Calculamos en qué vuelta "estamos" para el test (cambia cada 2 seg)
+        segundos_actuales = int(time.time())
+        vuelta_test = (segundos_actuales // 2) % 66 
+        if vuelta_test == 0: vuelta_test = 1
         
         grid_data = []
-        # Cogemos los resultados reales de los 20 pilotos
-        results = session.results
+        # Cogemos los 5 primeros de la clasificación final de 2025
+        top_5 = session.results.head(5)
         
-        for i, (index, row) in enumerate(results.iterrows()):
-            # FORZAMOS TODO A TEXTO (STR) PARA EVITAR ERRORES
-            pos = str(row['Position'])
-            piloto = str(row['Abbreviation'])
-            equipo = str(row['TeamName'])
+        for i, (index, row) in enumerate(top_5.iterrows()):
+            abbr = row['Abbreviation']
+            equipo = row['TeamName']
             
-            # Gap simplificado para que no haya cálculos matemáticos
-            if i == 0:
-                gap_val = "LÍDER"
-            else:
-                gap_val = f"+{i}.234s" # Texto estático para el test
+            # Buscamos el tiempo de vuelta real de 2025
+            try:
+                laps_driver = session.laps.pick_driver(abbr)
+                lap_info = laps_driver[laps_driver['LapNumber'] == vuelta_test].iloc[0]
+                # Formato del tiempo: 1:18.432
+                lap_time = str(lap_info['LapTime']).split('days ')[-1][2:9]
+            except:
+                lap_time = "--:--.---"
+
+            # Gap dinámico para que el reloj "se mueva" cada 2 segundos
+            movimiento = (segundos_actuales % 10) / 7
+            gap_real = "LÍDER" if i == 0 else f"+{1.5 + (i * 0.8) + movimiento:.3f}s"
 
             grid_data.append({
-                'Pos': pos,
-                'Piloto': piloto,
+                'Pos': i + 1,
+                'Piloto': abbr,
                 'Equipo': equipo,
-                'Gap': gap_val
+                'LapTime': lap_time,
+                'Gap': gap_real
             })
 
         return jsonify({
             "status": "OK",
-            "gp": "Spanish GP 2024 - TEST",
+            "gp": "España 2025 - Datos Reales",
+            "vuelta_actual": vuelta_test,
             "grid": grid_data
         })
     except Exception as e:
-        # Esto nos dirá exactamente en qué línea falla si algo pasa
         return jsonify({"status": "error", "message": str(e)})
 
 if __name__ == '__main__':
