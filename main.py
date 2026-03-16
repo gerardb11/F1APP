@@ -5,59 +5,55 @@ from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-# Configuración de caché
 cache_dir = 'cache'
 if not os.path.exists(cache_dir):
     os.makedirs(cache_dir)
 fastf1.Cache.enable_cache(cache_dir)
 
-# El servidor guarda la hora de inicio para saber cuándo empezó la vuelta 1
 START_TIME = time.time()
 
 @app.route('/api/v1/live')
 def get_live_data():
     try:
-        # Cargamos los datos reales del GP de España 2025
         session = fastf1.get_session(2025, 'Spain', 'R')
         session.load(laps=True, telemetry=False, weather=False)
         
-        # --- CÁLCULO DE VUELTA REAL ---
+        # Simulación: cada 80 seg = 1 vuelta
         segundos_transcurridos = int(time.time() - START_TIME)
-        # Cada 80 segundos pasamos de vuelta
         vuelta_actual = (segundos_transcurridos // 80) + 1
-        
-        # Límite de la carrera (66 vueltas)
         if vuelta_actual > 66: vuelta_actual = 66
         
-        grid_data = []
-        top_5 = session.results.head(5)
+        # --- LA CLAVE: Ordenar por quién pasó primero en esta vuelta ---
+        vueltas_de_esta_lap = session.laps.pick_lap(vuelta_actual).sort_values(by='Time')
+        top_5_vueltas = vueltas_de_esta_lap.head(5)
         
-        for i, (index, row) in enumerate(top_5.iterrows()):
-            abbr = row['Abbreviation']
-            
-            # Buscamos el tiempo REAL que hizo este piloto en esta vuelta específica
-            try:
-                laps_driver = session.laps.pick_driver(abbr)
-                lap_info = laps_driver[laps_driver['LapNumber'] == vuelta_actual].iloc[0]
-                # Formato: 1:19.432
-                lap_time = str(lap_info['LapTime']).split('days ')[-1][2:9]
-            except:
-                lap_time = "BOXES"
+        grid_data = []
+        tiempo_lider = None
 
-            # Gap dinámico basado en la vuelta
-            gap_real = "LÍDER" if i == 0 else f"+{0.8 * vuelta_actual * (i+1):.3f}s"
+        for i, (index, lap) in enumerate(top_5_vueltas.iterrows()):
+            abbr = lap['Driver']
+            
+            # Tiempo de vuelta real
+            lap_time_str = str(lap['LapTime']).split('days ')[-1][2:9]
+            
+            # Cálculo del Gap real respecto al líder en esa vuelta
+            if i == 0:
+                tiempo_lider = lap['Time']
+                gap_text = "LÍDER"
+            else:
+                gap_diff = (lap['Time'] - tiempo_lider).total_seconds()
+                gap_text = f"+{gap_diff:.3f}s"
 
             grid_data.append({
                 'Pos': i + 1,
                 'Piloto': abbr,
-                'Equipo': row['TeamName'],
-                'LapTime': lap_time,
-                'Gap': gap_real
+                'LapTime': lap_time_str,
+                'Gap': gap_text
             })
 
         return jsonify({
             "status": "OK",
-            "gp": "España 2025 (Simulación en vivo)",
+            "gp": "España 2025 (Simulación Real)",
             "info": {
                 "vuelta": vuelta_actual,
                 "total_vueltas": 66,
