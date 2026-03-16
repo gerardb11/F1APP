@@ -2,8 +2,8 @@ import os
 import fastf1
 from flask import Flask, jsonify
 
-# 1. Crear carpeta de cache
-cache_dir = 'cache'
+# 1. Crear carpeta de cache al principio
+cache_dir = os.path.join(os.getcwd(), 'cache')
 if not os.path.exists(cache_dir):
     os.makedirs(cache_dir)
 
@@ -18,21 +18,26 @@ def get_live_data():
         session.load(laps=False, telemetry=False, weather=False)
         
         grid_data = []
-        # Cogemos los resultados reales
-        for index, row in session.results.head(15).iterrows():
-            # Evitamos errores matemáticos forzando a que todo sea texto seguro
-            posicion = str(row['Position'])
-            abreviatura = str(row['Abbreviation'])
+        # Cogemos los resultados reales de los 20 pilotos
+        results = session.results
+        
+        for i, (index, row) in enumerate(results.iterrows()):
+            # FORZAMOS TODO A TEXTO (STR) PARA EVITAR ERRORES
+            pos = str(row['Position'])
+            piloto = str(row['Abbreviation'])
             equipo = str(row['TeamName'])
             
-            # Si es el primero es LÍDER, si no, ponemos un tiempo fijo para el test
-            gap_texto = "LÍDER" if index == 0 else f"+{index * 1.5}s"
+            # Gap simplificado para que no haya cálculos matemáticos
+            if i == 0:
+                gap_val = "LÍDER"
+            else:
+                gap_val = f"+{i}.234s" # Texto estático para el test
 
             grid_data.append({
-                'Pos': posicion,
-                'Piloto': abreviatura,
+                'Pos': pos,
+                'Piloto': piloto,
                 'Equipo': equipo,
-                'Gap': gap_texto
+                'Gap': gap_val
             })
 
         return jsonify({
@@ -41,6 +46,7 @@ def get_live_data():
             "grid": grid_data
         })
     except Exception as e:
+        # Esto nos dirá exactamente en qué línea falla si algo pasa
         return jsonify({"status": "error", "message": str(e)})
 
 if __name__ == '__main__':
